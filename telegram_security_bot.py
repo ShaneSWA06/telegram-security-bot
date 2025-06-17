@@ -4,18 +4,9 @@ from telegram.ext import Application, CommandHandler, ChatMemberHandler, Context
 from telegram.constants import ChatMemberStatus
 import os
 from datetime import datetime
-
-def keep_alive():
-    """Keep the service awake on Render free tier"""
-    while True:
-        try:
-            # This will be your Render URL
-            time.sleep(300)  # Wait 5 minutes
-        except:
-            pass
-
-# Start keep-alive in background
-threading.Thread(target=keep_alive, daemon=True).start()
+import requests
+import threading 
+import time 
 
 # Enable logging
 logging.basicConfig(
