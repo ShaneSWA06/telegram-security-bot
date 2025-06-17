@@ -62,7 +62,7 @@ Only group admins can use moderation commands.
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send help message."""
-    help_text = """🔒 <b>Smile Coin Security Bot</b>
+        help_text = """🔒 <b>Smile Coin Security Bot</b>
 
 🤖 <b>ဘာတွေလုပ်ပေးနိုင်လဲ:</b>
 - အဖွဲ့ဝင်အသစ်တွေ ကြိုဆိုမယ်
@@ -74,14 +74,14 @@ Only group admins can use moderation commands.
 - /help - အကူအညီ ပြန်ပြမယ်
 - /status - အဖွဲ့အချက်အလက် ကြည့်မယ်
 
-💎 <b>Smile Coin by Pyae</b> မှ လုံခြုံရေးစောင့်ရှောက်ပါတယ်!
-
-🙋‍♂️ မေးခွန်းရှိရင် admin တွေကို ဆက်သွယ်ပါ
-
 👑 <b>Admins:</b>
 - @PyaePPZ - Main Admin
 - @shaneswa - Co-Admin
-        """
+
+💎 <b>Smile Coin by Pyae</b> မှ လုံခြုံရေးစောင့်ရှောက်ပါတယ်!
+
+🙋‍♂️ မေးခွန်းရှိရင် admin တွေကို ဆက်သွယ်ပါ"""
+        
         await update.message.reply_text(help_text, parse_mode='HTML')
     
     async def is_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
