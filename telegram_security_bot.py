@@ -13,7 +13,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = "7604541038:AAEwhrfyBAJpsNKk40mawbJjJxLnnzPVs6M"
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_USER_IDS = [1925310270, 7137261147]  # PyaePPZ and shaneswa admin IDs
 ADMIN_USERNAMES = ["PyaePPZ", "shaneswa"]  # Admin usernames for reference
 
