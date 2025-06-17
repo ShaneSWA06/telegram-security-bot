@@ -101,53 +101,108 @@ Only group admins can use moderation commands.
             logger.error(f"Error checking admin status: {e}")
             return False
     
-    async def ban_user(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Ban a user from the group."""
-        if not await self.is_admin(update, context):
-            await update.message.reply_text("❌ Only group administrators can use this command.")
+   async def ban_user(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ban a user from the group."""
+    if not await self.is_admin(update, context):
+        await update.message.reply_text("❌ Only group administrators can use this command.")
+        return
+    
+    target_user = None
+    reason = None
+    
+    # Check if replying to a message
+    if update.message.reply_to_message:
+        target_user = update.message.reply_to_message.from_user
+        reason = " ".join(context.args) if context.args else None
+    else:
+        # Parse arguments
+        if not context.args:
+            await update.message.reply_text("❌ Please specify a user to ban.\nUsage: `/ban @username` or `/ban user_id` or reply to a message with `/ban`", parse_mode='Markdown')
             return
         
-        target_user = None
-        reason = "No reason provided"
+        user_identifier = context.args[0]
+        reason = " ".join(context.args[1:]) if len(context.args) > 1 else None
         
-        # Check if replying to a message
-        if update.message.reply_to_message:
-            target_user = update.message.reply_to_message.from_user
-            reason = " ".join(context.args) if context.args else "No reason provided"
-        else:
-            # Parse arguments
-            if not context.args:
-                await update.message.reply_text("❌ Please specify a user to ban.\nUsage: `/ban @username` or reply to a message with `/ban`", parse_mode='Markdown')
-                return
-            
-            username = context.args[0].replace('@', '')
-            reason = " ".join(context.args[1:]) if len(context.args) > 1 else "No reason provided"
-            
-            # Try to find user by username
+        # Check if it's a username (starts with @) or user ID (numeric)
+        if user_identifier.startswith('@'):
+            username = user_identifier[1:]  # Remove @ symbol
             try:
-                # This is a simplified approach - in practice, you'd need to maintain a user database
-                await update.message.reply_text("❌ Please reply to a user's message or provide their user ID instead of username.")
-                return
-            except Exception:
-                await update.message.reply_text("❌ User not found.")
-                return
-        
-        if target_user:
-            try:
-                await context.bot.ban_chat_member(update.effective_chat.id, target_user.id)
+                # Get chat administrators to find user by username
+                chat_admins = await context.bot.get_chat_administrators(update.effective_chat.id)
                 
-                ban_message = f"""
+                # Search through recent messages or use a different approach
+                # Since we can't directly get user by username, we'll try to find them in recent chat members
+                # This is a limitation of the Telegram Bot API
+                
+                # Alternative approach: Ask user to reply to the target user's message
+                await update.message.reply_text(
+                    f"❌ Cannot find user @{username}.\n"
+                    "Please either:\n"
+                    "• Reply to their message with `/ban`\n"
+                    "• Use their user ID: `/ban 123456789`\n"
+                    "• Forward their message and reply to it with `/ban`",
+                    parse_mode='Markdown'
+                )
+                return
+                
+            except Exception as e:
+                await update.message.reply_text(f"❌ Error searching for user @{username}: {str(e)}")
+                return
+                
+        else:
+            # Assume it's a user ID
+            try:
+                user_id = int(user_identifier)
+                # Get user info by ID
+                try:
+                    chat_member = await context.bot.get_chat_member(update.effective_chat.id, user_id)
+                    target_user = chat_member.user
+                except Exception:
+                    # User might not be in the group, but we can still try to ban by ID
+                    target_user = type('User', (), {
+                        'id': user_id,
+                        'full_name': f'User {user_id}',
+                        'username': None
+                    })()
+                    
+            except ValueError:
+                await update.message.reply_text("❌ Invalid user ID. Please provide a valid number.")
+                return
+    
+    if target_user:
+        # Check if trying to ban an admin
+        try:
+            member = await context.bot.get_chat_member(update.effective_chat.id, target_user.id)
+            if member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
+                await update.message.reply_text("❌ Cannot ban a group administrator.")
+                return
+        except Exception:
+            pass  # User might not be in group
+        
+        # Check if trying to ban self
+        if target_user.id == update.effective_user.id:
+            await update.message.reply_text("❌ You cannot ban yourself!")
+            return
+            
+        try:
+            await context.bot.ban_chat_member(update.effective_chat.id, target_user.id)
+            
+            ban_message = f"""
 🚫 **User Banned**
 👤 User: {target_user.full_name} (@{target_user.username or 'No username'})
 🆔 ID: `{target_user.id}`
-👮 Banned by: {update.effective_user.full_name}
-📝 Reason: {reason}
-⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-                """
-                await update.message.reply_text(ban_message, parse_mode='Markdown')
-                
-            except Exception as e:
-                await update.message.reply_text(f"❌ Failed to ban user: {str(e)}")
+👮 Banned by: {update.effective_user.full_name}"""
+
+            if reason:
+                ban_message += f"\n📝 Reason: {reason}"
+            
+            ban_message += f"\n⏰ Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            await update.message.reply_text(ban_message, parse_mode='Markdown')
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Failed to ban user: {str(e)}")
+    else:
+        await update.message.reply_text("❌ Could not identify the user to ban.")
     
     async def unban_user(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Unban a user from the group."""
