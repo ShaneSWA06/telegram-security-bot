@@ -62,25 +62,23 @@ Only group admins can use moderation commands.
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send help message."""
-        help_text = """
-🔒 **Smile Coin Security Bot**
+    help_text = """🔒 <b>Smile Coin Security Bot</b>
 
-🤖 **ဘာတွေလုပ်ပေးနိုင်လဲ:**
-• အဖွဲ့ဝင်အသစ်တွေ ဝင်လာရင် ကြိုဆိုမယ်
-• အဖွဲ့ဝင်တွေ ထွက်သွားရင် နှုတ်ဆက်မယ်
-• အဖွဲ့အချက်အလက်တွေ ပြပေးမယ်
-• လုံခြုံရေး စောင့်ကြည့်ပေးမယ်
+🤖 <b>ဘာတွေလုပ်ပေးနိုင်လဲ:</b>
+- အဖွဲ့ဝင်အသစ်တွေ ကြိုဆိုမယ်
+- အဖွဲ့ဝင်တွေ နှုတ်ဆက်မယ်
+- အဖွဲ့အချက်အလက်တွေ ပြပေးမယ်
+- လုံခြုံရေး စောင့်ကြည့်ပေးမယ်
 
-📋 **Available Commands:**
-• `/help` - ဒီမက်ဆေ့ချ်ကို ပြန်ပြမယ်
-• `/status` - အဖွဲ့အချက်အလက် ကြည့်မယ်
+📋 <b>Available Commands:</b>
+- /help - အကူအညီ ပြန်ပြမယ်
+- /status - အဖွဲ့အချက်အလက် ကြည့်မယ်
 
-🛡️ **အင်္ဂါရပ်များ:**
-• 24/7 အလိုအလျောက် စောင့်ကြည့်ခြင်း
-• အဖွဲ့ဝင်များ ဝင်ထွက်ခြင်း မှတ်တမ်း
-• လုံခြုံသော အဖွဲ့ပတ်ဝန်းကျင်
+👑 <b>Admins:</b>
+- @PyaePPZ - Main Admin
+- @shaneswa - Co-Admin
 
-💎 **Smile Coin by Pyae** မှ လုံခြုံရေးကို စောင့်ရှောက်ပါတယ်! 
+💎 <b>Smile Coin by Pyae</b> မှ လုံခြုံရေးစောင့်ရှောက်ပါတယ်!
 
 🙋‍♂️ မေးခွန်းရှိရင် admin တွေကို ဆက်သွယ်ပါ
 
@@ -88,7 +86,7 @@ Only group admins can use moderation commands.
 - @PyaePPZ - Main Admin
 - @shaneswa - Co-Admin
         """
-        await update.message.reply_text(help_text)
+        await update.message.reply_text(help_text, parse_mode='HTML')
     
     async def is_admin(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Check if user is admin of the group or in admin list."""
