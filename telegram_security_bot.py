@@ -1,8 +1,8 @@
 import logging
+import os
 from telegram import Update, ChatMember
 from telegram.ext import Application, CommandHandler, ChatMemberHandler, ContextTypes
 from telegram.constants import ChatMemberStatus
-import os
 from datetime import datetime
 import pytz
 
@@ -13,8 +13,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Bot configuration
+# Bot configuration - Use environment variables for security
 BOT_TOKEN = os.getenv('BOT_TOKEN')
+if not BOT_TOKEN:
+    logger.error("❌ BOT_TOKEN environment variable not set!")
+    exit(1)
+
 ADMIN_USER_IDS = [1925310270]  # PyaePPZ and shaneswa admin IDs
 ADMIN_USERNAMES = ["PyaePPZ"]  # Admin usernames for reference
 
@@ -148,7 +152,7 @@ Only group admins can use moderation commands.
                     'username': user.username,
                     'chat_id': update.effective_chat.id
                 }
-                print(f"💾 Stored info for @{user.username} (ID: {user.id}) - {get_myanmar_time()}")
+                logger.info(f"💾 Stored info for @{user.username} (ID: {user.id}) - {get_myanmar_time()}")
     
     async def lookup_user(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Look up a user's information by username."""
@@ -170,7 +174,7 @@ Only group admins can use moderation commands.
 👤 Username: @{user_info['username']}
 🆔 ID: `{user_info['id']}`
 📝 To ban: `/ban @{user_info['username']}`
-🕐 Myanmar Time: {get_myanmar_time()}
+🇲🇲 Myanmar Time: {get_myanmar_time()}
             """
             await update.message.reply_text(lookup_message, parse_mode='Markdown')
         else:
@@ -223,7 +227,7 @@ Only group admins can use moderation commands.
                     'full_name': user_info['full_name'],
                     'username': user_info['username']
                 })()
-                print(f"🎯 Found @{username} in database - ID: {target_user_id}")
+                logger.info(f"🎯 Found @{username} in database - ID: {target_user_id}")
             else:
                 await update.message.reply_text(
                     f"❌ Cannot find @{username} in my database.\n\n"
@@ -293,11 +297,11 @@ Only group admins can use moderation commands.
                 ban_message += f"\n🇲🇲 Myanmar Time: {get_myanmar_time()}"
                 
                 await update.message.reply_text(ban_message, parse_mode='Markdown')
-                print(f"✅ Successfully banned @{target_user.username} (ID: {target_user_id}) - {get_myanmar_time()}")
+                logger.info(f"✅ Successfully banned @{target_user.username} (ID: {target_user_id}) - {get_myanmar_time()}")
                 
             except Exception as e:
                 await update.message.reply_text(f"❌ Failed to ban user: {str(e)}")
-                print(f"❌ Ban failed: {e}")
+                logger.error(f"❌ Ban failed: {e}")
         else:
             await update.message.reply_text("❌ Could not identify the user to ban.")
     
@@ -412,13 +416,13 @@ Only group admins can use moderation commands.
         try:
             # Check if chat_member update exists
             if not update.chat_member:
-                print("❌ No chat_member update found")
+                logger.warning("❌ No chat_member update found")
                 return
                 
             result = self.extract_status_change(update.chat_member)
             
             if result is None:
-                print("❌ No status change detected")
+                logger.warning("❌ No status change detected")
                 return
             
             was_member, is_member = result
@@ -428,16 +432,16 @@ Only group admins can use moderation commands.
             # Skip if it's the bot itself
             bot_info = await context.bot.get_me()
             if user.id == bot_info.id:
-                print("🤖 Skipping bot status change")
+                logger.info("🤖 Skipping bot status change")
                 return
             
-            # Debug logging with print
-            print(f"👤 Status change detected: {user.full_name} - was_member: {was_member}, is_member: {is_member}")
-            print(f"📊 Old status: {update.chat_member.old_chat_member.status}, New status: {update.chat_member.new_chat_member.status}")
+            # Debug logging
+            logger.info(f"👤 Status change detected: {user.full_name} - was_member: {was_member}, is_member: {is_member}")
+            logger.info(f"📊 Old status: {update.chat_member.old_chat_member.status}, New status: {update.chat_member.new_chat_member.status}")
             
             # User joined
             if not was_member and is_member:
-                print(f"✅ {user.full_name} JOINED - Sending welcome message...")
+                logger.info(f"✅ {user.full_name} JOINED - Sending welcome message...")
                 join_message = f"""
 🎉 မင်္ဂလာပါ {user.full_name} 😊
 
@@ -449,16 +453,27 @@ Only group admins can use moderation commands.
 🇲🇲 Myanmar Time: {get_myanmar_time()}
                 """
                 await context.bot.send_message(chat.id, join_message, parse_mode='Markdown')
-                print(f"✅ Welcome message sent for {user.full_name} - {get_myanmar_time()}")
+                logger.info(f"✅ Welcome message sent for {user.full_name} - {get_myanmar_time()}")
             
             # User left or was removed/banned
             elif was_member and not is_member:
-                print(f"❌ {user.full_name} LEFT/REMOVED - Sending goodbye message...")
-                # Check if user was kicked/banned vs left voluntarily
                 new_status = update.chat_member.new_chat_member.status
-                action_type = "left" if new_status == ChatMemberStatus.LEFT else "removed"
                 
-                leave_message = f"""
+                # Check if user was banned/kicked vs left voluntarily
+                banned_statuses = []
+                try:
+                    banned_statuses.append(ChatMemberStatus.KICKED)
+                except AttributeError:
+                    pass
+                try:
+                    banned_statuses.append(ChatMemberStatus.BANNED)
+                except AttributeError:
+                    pass
+                
+                # Only send goodbye message if user left voluntarily, not if banned/kicked
+                if new_status == ChatMemberStatus.LEFT:
+                    logger.info(f"👋 {user.full_name} LEFT VOLUNTARILY - Sending goodbye message...")
+                    leave_message = f"""
 👋 {user.full_name} 
 😢 List ထဲမှာမင်းရှိတယ်ဆိုတာသိလိုက်ရတဲ့အချိန်ကစပြီးကိုယ်ဟာသအား၀မ်းနည်းနေပါပြီ 
 💔 ကောင်းရာဘ၀ကိုပိုင်ဆိုင်ရပါစေဗျာ
@@ -466,14 +481,18 @@ Only group admins can use moderation commands.
 🇲🇲 Myanmar Time: {get_myanmar_time()}
 
 😊 ကောင်းမွန်ပါစေ! Take care! 🌈
-                """
-                await context.bot.send_message(chat.id, leave_message, parse_mode='Markdown')
-                print(f"✅ Goodbye message sent for {user.full_name} ({action_type}) - {get_myanmar_time()}")
+                    """
+                    await context.bot.send_message(chat.id, leave_message, parse_mode='Markdown')
+                    logger.info(f"✅ Goodbye message sent for {user.full_name} (left voluntarily) - {get_myanmar_time()}")
+                elif new_status in banned_statuses:
+                    logger.info(f"🚫 {user.full_name} was BANNED/KICKED by admin - No goodbye message sent")
+                else:
+                    logger.info(f"❌ {user.full_name} was REMOVED (status: {new_status}) - No goodbye message sent")
             else:
-                print(f"🔄 Status change for {user.full_name} but no action needed (was: {was_member}, is: {is_member})")
+                logger.info(f"🔄 Status change for {user.full_name} but no action needed (was: {was_member}, is: {is_member})")
                 
         except Exception as e:
-            print(f"🚨 ERROR in track_chats: {e}")
+            logger.error(f"🚨 ERROR in track_chats: {e}")
             import traceback
             traceback.print_exc()
     
@@ -524,15 +543,15 @@ Only group admins can use moderation commands.
     
     def run(self):
         """Start the bot."""
-        print(f"🔒 Security Bot starting... - {get_myanmar_time()}")
-        print("Bot is now running. Press Ctrl+C to stop.")
+        logger.info(f"🔒 Security Bot starting... - {get_myanmar_time()}")
+        logger.info("Bot is now running. Press Ctrl+C to stop.")
         self.application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 def main():
     """Main function to run the bot."""
-    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("❌ Please set your bot token in the BOT_TOKEN variable!")
-        print("Get your token from @BotFather on Telegram")
+    if not BOT_TOKEN:
+        logger.error("❌ Please set your BOT_TOKEN environment variable!")
+        logger.error("Get your token from @BotFather on Telegram")
         return
     
     bot = SecurityBot()
