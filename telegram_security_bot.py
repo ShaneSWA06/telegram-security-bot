@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration - Use environment variables for security
-BOT_TOKEN = os.getenv('BOT_TOKEN','7604541038:AAEwhrfyBAJpsNKk40mawbJjJxLnnzPVs6M')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     logger.error("❌ BOT_TOKEN environment variable not set!")
     exit(1)
