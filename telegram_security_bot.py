@@ -14,7 +14,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration - Use environment variables for security
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+BOT_TOKEN = os.getenv('BOT_TOKEN','7604541038:AAEwhrfyBAJpsNKk40mawbJjJxLnnzPVs6M')
 if not BOT_TOKEN:
     logger.error("❌ BOT_TOKEN environment variable not set!")
     exit(1)
@@ -60,6 +60,26 @@ class SecurityBot:
         # Message handler to store user info
         from telegram.ext import MessageHandler, filters
         self.application.add_handler(MessageHandler(filters.ALL, self.store_user_info))
+        
+        # Add error handler
+        self.application.add_error_handler(self.error_handler)
+    
+    async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Log the error and send a telegram message to notify the developer."""
+        logger.error("Exception while handling an update:", exc_info=context.error)
+        
+        # Try to get some basic info about the update
+        try:
+            if isinstance(update, Update):
+                if update.effective_chat:
+                    logger.error(f"Error in chat: {update.effective_chat.id}")
+                if update.effective_user:
+                    logger.error(f"Error from user: {update.effective_user.id}")
+        except Exception as e:
+            logger.error(f"Error getting update info: {e}")
+        
+        # Don't crash the bot, just log and continue
+        logger.info("Bot continuing to run despite error...")
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send a message when the command /start is issued."""
@@ -475,7 +495,7 @@ Only group admins can use moderation commands.
                     logger.info(f"👋 {user.full_name} LEFT VOLUNTARILY - Sending goodbye message...")
                     leave_message = f"""
 👋 {user.full_name} 
-😢 List ထဲမှာမင်းရှိတယ်ဆိုတာသိလိုက်ရတဲ့အချိန်ကစပြီးကိုယ်ဟာသအား၀မ်းနည်းနေပါပြီ 
+😢 List ထဲမှာမင်းရှိတယ်ဆိုတာသိလိုက်ရတဲ့အချိန်ကစပြီးကိုယ်ဟာတအား၀မ်းနည်းနေပါပြီ 
 💔 ကောင်းရာဘ၀ကိုပိုင်ဆိုင်ရပါစေဗျာ
 
 🇲🇲 Myanmar Time: {get_myanmar_time()}
