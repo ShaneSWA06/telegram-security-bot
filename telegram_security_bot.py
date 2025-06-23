@@ -1,8 +1,9 @@
 import logging
-import os
 from telegram import Update, ChatMember
 from telegram.ext import Application, CommandHandler, ChatMemberHandler, ContextTypes
 from telegram.constants import ChatMemberStatus
+import os
+import json
 from datetime import datetime
 import pytz
 
@@ -13,14 +14,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Bot configuration - Use environment variables for security
+# Bot configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN')
-if not BOT_TOKEN:
-    logger.error("❌ BOT_TOKEN environment variable not set!")
-    exit(1)
-
-ADMIN_USER_IDS = [1925310270]  # PyaePPZ and shaneswa admin IDs
-ADMIN_USERNAMES = ["PyaePPZ"]  # Admin usernames for reference
+ADMIN_USER_IDS = [1925310270, 7137261147]  # PyaePPZ and shaneswa admin IDs
+ADMIN_USERNAMES = ["PyaePPZ", "shaneswa"]  # Admin usernames for reference
 
 # Myanmar timezone
 MYANMAR_TZ = pytz.timezone('Asia/Yangon')
@@ -41,7 +38,62 @@ class SecurityBot:
     def __init__(self):
         self.application = Application.builder().token(BOT_TOKEN).build()
         self.user_database = {}  # Store username -> user_info mapping
+        self.group_configs = {}  # Store group-specific configurations
+        self.config_file = 'group_configs.json'
+        self.load_group_configs()
         self.setup_handlers()
+    
+    def load_group_configs(self):
+        """Load group configurations from file."""
+        try:
+            if os.path.exists(self.config_file):
+                with open(self.config_file, 'r', encoding='utf-8') as f:
+                    self.group_configs = json.load(f)
+                print(f"✅ Loaded configurations for {len(self.group_configs)} groups")
+            else:
+                print("📝 No existing config file found, starting fresh")
+        except Exception as e:
+            print(f"❌ Error loading configs: {e}")
+            self.group_configs = {}
+    
+    def save_group_configs(self):
+        """Save group configurations to file."""
+        try:
+            with open(self.config_file, 'w', encoding='utf-8') as f:
+                json.dump(self.group_configs, f, ensure_ascii=False, indent=2)
+            print(f"💾 Saved configurations for {len(self.group_configs)} groups")
+        except Exception as e:
+            print(f"❌ Error saving configs: {e}")
+    
+    def get_group_config(self, chat_id):
+        """Get configuration for a specific group."""
+        chat_id_str = str(chat_id)
+        if chat_id_str not in self.group_configs:
+            # Default configuration
+            self.group_configs[chat_id_str] = {
+                'welcome_message': """
+🎉 မင်္ဂလာပါ {user_name} 😊
+
+💰 Smile Coin Selling by Pyae မှ နွေးထွေးစွာ ကြိုဆိုပါတယ်! 
+🤗 စိတ်ချစွာ၀ယ်ယူနိုင်ပါတယ်
+
+👑 Admin - @PyaePPZ
+
+🇲🇲 Myanmar Time: {myanmar_time}
+                """.strip(),
+                'goodbye_message': """
+👋 {user_name} 
+😢 List ထဲမှာမင်းရှိတယ်ဆိုတာသိလိုက်ရတဲ့အချိန်ကစပြီးကိုယ်ဟာသအား၀မ်းနည်းနေပါပြီ 
+💔 ကောင်းရာဘ၀ကိုပိုင်ဆိုင်ရပါစေဗျာ
+
+🇲🇲 Myanmar Time: {myanmar_time}
+
+😊 ကောင်းမွန်ပါစေ! Take care! 🌈
+                """.strip(),
+                'group_name': 'Default Group'
+            }
+            self.save_group_configs()
+        return self.group_configs[chat_id_str]
     
     def setup_handlers(self):
         # Command handlers
@@ -53,6 +105,13 @@ class SecurityBot:
         self.application.add_handler(CommandHandler("status", self.group_status))
         self.application.add_handler(CommandHandler("lookup", self.lookup_user))
         
+        # New commands for group configuration
+        self.application.add_handler(CommandHandler("setwelcome", self.set_welcome_message))
+        self.application.add_handler(CommandHandler("setgoodbye", self.set_goodbye_message))
+        self.application.add_handler(CommandHandler("setgroupname", self.set_group_name))
+        self.application.add_handler(CommandHandler("showconfig", self.show_config))
+        self.application.add_handler(CommandHandler("resetconfig", self.reset_config))
+        
         # Chat member handler for tracking joins/leaves
         self.application.add_handler(ChatMemberHandler(self.track_chats, ChatMemberHandler.CHAT_MEMBER))
         self.application.add_handler(ChatMemberHandler(self.track_chats, ChatMemberHandler.MY_CHAT_MEMBER))
@@ -60,26 +119,154 @@ class SecurityBot:
         # Message handler to store user info
         from telegram.ext import MessageHandler, filters
         self.application.add_handler(MessageHandler(filters.ALL, self.store_user_info))
-        
-        # Add error handler
-        self.application.add_error_handler(self.error_handler)
     
-    async def error_handler(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Log the error and send a telegram message to notify the developer."""
-        logger.error("Exception while handling an update:", exc_info=context.error)
+    async def set_welcome_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Set custom welcome message for this group."""
+        if not await self.is_admin(update, context):
+            await update.message.reply_text("❌ Only group administrators can use this command.")
+            return
         
-        # Try to get some basic info about the update
-        try:
-            if isinstance(update, Update):
-                if update.effective_chat:
-                    logger.error(f"Error in chat: {update.effective_chat.id}")
-                if update.effective_user:
-                    logger.error(f"Error from user: {update.effective_user.id}")
-        except Exception as e:
-            logger.error(f"Error getting update info: {e}")
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a welcome message.\n\n"
+                "**Usage:** `/setwelcome Your custom message here`\n\n"
+                "**Available placeholders:**\n"
+                "• `{user_name}` - New member's name\n"
+                "• `{myanmar_time}` - Current Myanmar time\n\n"
+                "**Line breaks:**\n"
+                "• Use `\\n` for new lines\n"
+                "• Use `\\n\\n` for double spacing\n\n"
+                "**Example:**\n"
+                "`/setwelcome 🎉 Welcome {user_name}!\\n\\nTime: {myanmar_time}`",
+                parse_mode='Markdown'
+            )
+            return
         
-        # Don't crash the bot, just log and continue
-        logger.info("Bot continuing to run despite error...")
+        chat_id = str(update.effective_chat.id)
+        new_message = " ".join(context.args)
+        
+        # Convert \n to actual line breaks
+        new_message = new_message.replace('\\n', '\n')
+        
+        config = self.get_group_config(chat_id)
+        config['welcome_message'] = new_message
+        self.save_group_configs()
+        
+        await update.message.reply_text(
+            f"✅ **Welcome message updated!**\n\n"
+            f"**Preview:**\n{new_message.format(user_name='[New Member]', myanmar_time=get_myanmar_time())}",
+            parse_mode='Markdown'
+        )
+    
+    async def set_goodbye_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Set custom goodbye message for this group."""
+        if not await self.is_admin(update, context):
+            await update.message.reply_text("❌ Only group administrators can use this command.")
+            return
+        
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a goodbye message.\n\n"
+                "**Usage:** `/setgoodbye Your custom message here`\n\n"
+                "**Available placeholders:**\n"
+                "• `{user_name}` - Leaving member's name\n"
+                "• `{myanmar_time}` - Current Myanmar time\n\n"
+                "**Line breaks:**\n"
+                "• Use `\\n` for new lines\n"
+                "• Use `\\n\\n` for double spacing\n\n"
+                "**Example:**\n"
+                "`/setgoodbye 👋 Goodbye {user_name}!\\n\\nTime: {myanmar_time}`",
+                parse_mode='Markdown'
+            )
+            return
+        
+        chat_id = str(update.effective_chat.id)
+        new_message = " ".join(context.args)
+        
+        # Convert \n to actual line breaks
+        new_message = new_message.replace('\\n', '\n')
+        
+        config = self.get_group_config(chat_id)
+        config['goodbye_message'] = new_message
+        self.save_group_configs()
+        
+        await update.message.reply_text(
+            f"✅ **Goodbye message updated!**\n\n"
+            f"**Preview:**\n{new_message.format(user_name='[Leaving Member]', myanmar_time=get_myanmar_time())}",
+            parse_mode='Markdown'
+        )
+    
+    async def set_group_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Set group name for identification."""
+        if not await self.is_admin(update, context):
+            await update.message.reply_text("❌ Only group administrators can use this command.")
+            return
+        
+        if not context.args:
+            await update.message.reply_text(
+                "❌ Please provide a group name.\n\n"
+                "**Usage:** `/setgroupname Your Group Name`",
+                parse_mode='Markdown'
+            )
+            return
+        
+        chat_id = str(update.effective_chat.id)
+        group_name = " ".join(context.args)
+        
+        config = self.get_group_config(chat_id)
+        config['group_name'] = group_name
+        self.save_group_configs()
+        
+        await update.message.reply_text(f"✅ **Group name set to:** {group_name}")
+    
+    async def show_config(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show current group configuration."""
+        if not await self.is_admin(update, context):
+            await update.message.reply_text("❌ Only group administrators can use this command.")
+            return
+        
+        chat_id = str(update.effective_chat.id)
+        config = self.get_group_config(chat_id)
+        
+        config_message = f"""
+📋 **Current Group Configuration**
+
+🏷️ **Group Name:** {config['group_name']}
+🆔 **Chat ID:** `{chat_id}`
+
+🎉 **Welcome Message:**
+```
+{config['welcome_message']}
+```
+
+👋 **Goodbye Message:**
+```
+{config['goodbye_message']}
+```
+
+📝 **Note:** Use placeholders `{{user_name}}` and `{{myanmar_time}}` in your messages.
+
+🇲🇲 Myanmar Time: {get_myanmar_time()}
+        """
+        
+        await update.message.reply_text(config_message, parse_mode='Markdown')
+    
+    async def reset_config(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Reset group configuration to default."""
+        if not await self.is_admin(update, context):
+            await update.message.reply_text("❌ Only group administrators can use this command.")
+            return
+        
+        chat_id = str(update.effective_chat.id)
+        
+        # Remove existing config to trigger default creation
+        if chat_id in self.group_configs:
+            del self.group_configs[chat_id]
+        
+        # Get default config
+        self.get_group_config(chat_id)
+        
+        await update.message.reply_text("✅ **Group configuration reset to default!**\n\nUse `/showconfig` to see current settings.")
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send a message when the command /start is issued."""
@@ -95,6 +282,13 @@ I'm now monitoring this group for member changes and providing admin controls.
 • `/status` - Show group statistics
 • `/help` - Show this help message
 
+**Group Configuration:**
+• `/setwelcome` - Set custom welcome message
+• `/setgoodbye` - Set custom goodbye message
+• `/setgroupname` - Set group name
+• `/showconfig` - Show current config
+• `/resetconfig` - Reset to default
+
 **Auto-notifications:**
 ✅ User joins will be logged
 ❌ User leaves will be logged
@@ -108,7 +302,9 @@ Only group admins can use moderation commands.
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send help message."""
-        help_text = f"""🔒 <b>Smile Coin Security Bot</b>
+        config = self.get_group_config(str(update.effective_chat.id))
+        
+        help_text = f"""🔒 <b>Security Bot - {config['group_name']}</b>
 
 🤖 <b>ဘာတွေလုပ်ပေးနိုင်လဲ:</b>
 - အဖွဲ့ဝင်အသစ်တွေ ကြိုဆိုမယ်
@@ -120,13 +316,17 @@ Only group admins can use moderation commands.
 - /help - အကူအညီ ပြန်ပြမယ်
 - /status - အဖွဲ့အချက်အလက် ကြည့်မယ်
 
-💎 <b>Smile Coin by Pyae</b> မှ လုံခြုံရေးစောင့်ရှောက်ပါတယ်!
+⚙️ <b>Group Configuration (Admins only):</b>
+- /setwelcome - Welcome message ပြောင်းမယ်
+- /setgoodbye - Goodbye message ပြောင်းမယ်
+- /showconfig - လက်ရှိ setting တွေကြည့်မယ်
+
+💎 <b>Multi-Group Security Bot</b> မှ လုံခြုံရေးစောင့်ရှောက်ပါတယ်!
 
 🙋‍♂️ မေးခွန်းရှိရင် admin တွေကို ဆက်သွယ်ပါ
 
 👑 <b>Admins:</b>
 - @PyaePPZ - Main Admin
-- @shaneswa - Co-Admin
 
 🇲🇲 Myanmar Time: {get_myanmar_time()}
         """
@@ -172,7 +372,7 @@ Only group admins can use moderation commands.
                     'username': user.username,
                     'chat_id': update.effective_chat.id
                 }
-                logger.info(f"💾 Stored info for @{user.username} (ID: {user.id}) - {get_myanmar_time()}")
+                print(f"💾 Stored info for @{user.username} (ID: {user.id}) - {get_myanmar_time()}")
     
     async def lookup_user(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Look up a user's information by username."""
@@ -194,7 +394,7 @@ Only group admins can use moderation commands.
 👤 Username: @{user_info['username']}
 🆔 ID: `{user_info['id']}`
 📝 To ban: `/ban @{user_info['username']}`
-🇲🇲 Myanmar Time: {get_myanmar_time()}
+🕐 Myanmar Time: {get_myanmar_time()}
             """
             await update.message.reply_text(lookup_message, parse_mode='Markdown')
         else:
@@ -247,7 +447,7 @@ Only group admins can use moderation commands.
                     'full_name': user_info['full_name'],
                     'username': user_info['username']
                 })()
-                logger.info(f"🎯 Found @{username} in database - ID: {target_user_id}")
+                print(f"🎯 Found @{username} in database - ID: {target_user_id}")
             else:
                 await update.message.reply_text(
                     f"❌ Cannot find @{username} in my database.\n\n"
@@ -317,11 +517,11 @@ Only group admins can use moderation commands.
                 ban_message += f"\n🇲🇲 Myanmar Time: {get_myanmar_time()}"
                 
                 await update.message.reply_text(ban_message, parse_mode='Markdown')
-                logger.info(f"✅ Successfully banned @{target_user.username} (ID: {target_user_id}) - {get_myanmar_time()}")
+                print(f"✅ Successfully banned @{target_user.username} (ID: {target_user_id}) - {get_myanmar_time()}")
                 
             except Exception as e:
                 await update.message.reply_text(f"❌ Failed to ban user: {str(e)}")
-                logger.error(f"❌ Ban failed: {e}")
+                print(f"❌ Ban failed: {e}")
         else:
             await update.message.reply_text("❌ Could not identify the user to ban.")
     
@@ -414,10 +614,12 @@ Only group admins can use moderation commands.
         try:
             chat = await context.bot.get_chat(update.effective_chat.id)
             member_count = await context.bot.get_chat_member_count(update.effective_chat.id)
+            config = self.get_group_config(str(update.effective_chat.id))
             
             status_message = f"""
 📊 **Group Status**
 🏷️ Group: {chat.title}
+🎯 Custom Name: {config['group_name']}
 👥 Members: {member_count}
 🆔 Chat ID: `{chat.id}`
 🇲🇲 Myanmar Time: {get_myanmar_time()}
@@ -425,6 +627,7 @@ Only group admins can use moderation commands.
 🔒 Security Bot: Active ✅
 📝 Monitoring: Joins/Leaves ✅
 👮 Admin Controls: Available ✅
+⚙️ Custom Messages: Configured ✅
             """
             await update.message.reply_text(status_message, parse_mode='Markdown')
             
@@ -436,13 +639,13 @@ Only group admins can use moderation commands.
         try:
             # Check if chat_member update exists
             if not update.chat_member:
-                logger.warning("❌ No chat_member update found")
+                print("❌ No chat_member update found")
                 return
                 
             result = self.extract_status_change(update.chat_member)
             
             if result is None:
-                logger.warning("❌ No status change detected")
+                print("❌ No status change detected")
                 return
             
             was_member, is_member = result
@@ -452,67 +655,51 @@ Only group admins can use moderation commands.
             # Skip if it's the bot itself
             bot_info = await context.bot.get_me()
             if user.id == bot_info.id:
-                logger.info("🤖 Skipping bot status change")
+                print("🤖 Skipping bot status change")
                 return
             
-            # Debug logging
-            logger.info(f"👤 Status change detected: {user.full_name} - was_member: {was_member}, is_member: {is_member}")
-            logger.info(f"📊 Old status: {update.chat_member.old_chat_member.status}, New status: {update.chat_member.new_chat_member.status}")
+            # Get group-specific configuration
+            config = self.get_group_config(str(chat.id))
+            
+            # Debug logging with print
+            print(f"👤 Status change detected: {user.full_name} - was_member: {was_member}, is_member: {is_member}")
+            print(f"📊 Old status: {update.chat_member.old_chat_member.status}, New status: {update.chat_member.new_chat_member.status}")
+            print(f"🏷️ Group: {config['group_name']} (ID: {chat.id})")
             
             # User joined
             if not was_member and is_member:
-                logger.info(f"✅ {user.full_name} JOINED - Sending welcome message...")
-                join_message = f"""
-🎉 မင်္ဂလာပါ {user.full_name} 😊
-
-💰 Smile Coin Selling by Pyae မှ နွေးထွေးစွာ ကြိုဆိုပါတယ်! 
-🤗 စိတ်ချစွာ၀ယ်ယူနိုင်ပါတယ်
-
-👑 Admin - @PyaePPZ
-
-🇲🇲 Myanmar Time: {get_myanmar_time()}
-                """
-                await context.bot.send_message(chat.id, join_message, parse_mode='Markdown')
-                logger.info(f"✅ Welcome message sent for {user.full_name} - {get_myanmar_time()}")
+                print(f"✅ {user.full_name} JOINED - Sending welcome message...")
+                
+                # Format the welcome message with user info
+                join_message = config['welcome_message'].format(
+                    user_name=user.full_name,
+                    myanmar_time=get_myanmar_time()
+                )
+                
+                await context.bot.send_message(chat.id, join_message)
+                print(f"✅ Welcome message sent for {user.full_name} in {config['group_name']} - {get_myanmar_time()}")
             
             # User left or was removed/banned
             elif was_member and not is_member:
+                print(f"❌ {user.full_name} LEFT/REMOVED - Sending goodbye message...")
+                
+                # Check if user was kicked/banned vs left voluntarily
                 new_status = update.chat_member.new_chat_member.status
+                action_type = "left" if new_status == ChatMemberStatus.LEFT else "removed"
                 
-                # Check if user was banned/kicked vs left voluntarily
-                banned_statuses = []
-                try:
-                    banned_statuses.append(ChatMemberStatus.KICKED)
-                except AttributeError:
-                    pass
-                try:
-                    banned_statuses.append(ChatMemberStatus.BANNED)
-                except AttributeError:
-                    pass
+                # Format the goodbye message with user info
+                leave_message = config['goodbye_message'].format(
+                    user_name=user.full_name,
+                    myanmar_time=get_myanmar_time()
+                )
                 
-                # Only send goodbye message if user left voluntarily, not if banned/kicked
-                if new_status == ChatMemberStatus.LEFT:
-                    logger.info(f"👋 {user.full_name} LEFT VOLUNTARILY - Sending goodbye message...")
-                    leave_message = f"""
-👋 {user.full_name} 
-😢 List ထဲမှာမင်းရှိတယ်ဆိုတာသိလိုက်ရတဲ့အချိန်ကစပြီးကိုယ်ဟာတအား၀မ်းနည်းနေပါပြီ 
-💔 ကောင်းရာဘ၀ကိုပိုင်ဆိုင်ရပါစေဗျာ
-
-🇲🇲 Myanmar Time: {get_myanmar_time()}
-
-😊 ကောင်းမွန်ပါစေ! Take care! 🌈
-                    """
-                    await context.bot.send_message(chat.id, leave_message, parse_mode='Markdown')
-                    logger.info(f"✅ Goodbye message sent for {user.full_name} (left voluntarily) - {get_myanmar_time()}")
-                elif new_status in banned_statuses:
-                    logger.info(f"🚫 {user.full_name} was BANNED/KICKED by admin - No goodbye message sent")
-                else:
-                    logger.info(f"❌ {user.full_name} was REMOVED (status: {new_status}) - No goodbye message sent")
+                await context.bot.send_message(chat.id, leave_message)
+                print(f"✅ Goodbye message sent for {user.full_name} ({action_type}) in {config['group_name']} - {get_myanmar_time()}")
             else:
-                logger.info(f"🔄 Status change for {user.full_name} but no action needed (was: {was_member}, is: {is_member})")
+                print(f"🔄 Status change for {user.full_name} but no action needed (was: {was_member}, is: {is_member})")
                 
         except Exception as e:
-            logger.error(f"🚨 ERROR in track_chats: {e}")
+            print(f"🚨 ERROR in track_chats: {e}")
             import traceback
             traceback.print_exc()
     
@@ -563,15 +750,15 @@ Only group admins can use moderation commands.
     
     def run(self):
         """Start the bot."""
-        logger.info(f"🔒 Security Bot starting... - {get_myanmar_time()}")
-        logger.info("Bot is now running. Press Ctrl+C to stop.")
+        print(f"🔒 Multi-Group Security Bot starting... - {get_myanmar_time()}")
+        print("Bot is now running. Press Ctrl+C to stop.")
         self.application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 def main():
     """Main function to run the bot."""
-    if not BOT_TOKEN:
-        logger.error("❌ Please set your BOT_TOKEN environment variable!")
-        logger.error("Get your token from @BotFather on Telegram")
+    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        print("❌ Please set your bot token in the BOT_TOKEN variable!")
+        print("Get your token from @BotFather on Telegram")
         return
     
     bot = SecurityBot()
